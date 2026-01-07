@@ -1,1 +1,571 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHÒNG SỐ 13</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap');
+        
+        body {
+            font-family: 'Courier Prime', monospace;
+            background-color: #000;
+            color: #d4d4d4;
+            overflow-x: hidden;
+            user-select: none;
+        }
 
+        /* Hiệu ứng Scanlines màn hình cũ */
+        .scanlines {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        .text-horror {
+            color: #dc2626;
+            text-shadow: 0 0 8px rgba(220, 38, 38, 0.6);
+            font-weight: bold;
+        }
+
+        .text-whisper {
+            color: #737373;
+            font-style: italic;
+            letter-spacing: 0.1em;
+        }
+
+        .cursor-blink::after {
+            content: '▋';
+            display: inline-block;
+            margin-left: 4px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Animation cho fade-in */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in forwards;
+            opacity: 0;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 relative">
+
+    <!-- Background Ambience -->
+    <div class="fixed inset-0 pointer-events-none z-0">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,black_100%)]"></div>
+        <div class="absolute inset-0 opacity-10 scanlines w-full h-full"></div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="relative z-10 w-full max-w-xl flex flex-col min-h-[85vh]">
+        
+        <!-- Header -->
+        <header class="absolute -top-10 left-0 text-[10px] tracking-[0.4em] opacity-30 flex items-center gap-2">
+            ROOM_13_LOGS 
+            <span id="icon-headphone" class="hidden">🎧</span>
+            <span id="icon-eye" class="hidden">👁️</span>
+        </header>
+
+        <!-- Ending Title Display -->
+        <div id="ending-title" class="hidden text-center text-red-500 font-bold text-2xl mb-8 tracking-widest border-b border-red-900 pb-4 fade-in"></div>
+
+        <!-- Content Area -->
+        <div class="flex-grow flex flex-col justify-center mb-8">
+            <div id="text-container" class="space-y-6">
+                <!-- Text will be injected here -->
+                <div id="story-text" class="text-lg md:text-xl leading-relaxed tracking-wide min-h-[140px] whitespace-pre-wrap"></div>
+                
+                <!-- Skip Button -->
+                <div id="skip-container" class="relative hidden">
+                    <button id="btn-skip" class="absolute -bottom-8 right-0 text-xs flex items-center gap-1 text-neutral-600 hover:text-white transition-colors">
+                         BỎ QUA HIỆU ỨNG
+                    </button>
+                </div>
+
+                <!-- Image Container -->
+                <div id="image-container" class="hidden fade-in">
+                    <!-- Image content will be injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Options Area -->
+        <div id="options-container" class="min-h-[180px] pb-8 flex flex-col gap-3">
+            <!-- Buttons will be injected here -->
+        </div>
+
+    </main>
+    
+    <div class="fixed bottom-4 text-[9px] text-neutral-700 tracking-[0.2em] w-full text-center">
+        NHẤN VÀO MÀN HÌNH ĐỂ KÍCH HOẠT ÂM THANH
+    </div>
+
+    <!-- SCRIPT -->
+    <script>
+        /**
+         * ==========================================
+         * 1. CẤU HÌNH HÌNH ẢNH (USER CONFIG)
+         * ==========================================
+         */
+        const IMAGE_CONFIG = {
+            notebook: "https://hoangvinhdigital.github.io/room/book.png", 
+            hallway:  "https://hoangvinhdigital.github.io/room/hanhlan.jpg", 
+            mirror:   "https://hoangvinhdigital.github.io/room/guong.png",
+            recorder: "https://hoangvinhdigital.github.io/room/ghiam.png",
+            drawing:  "https://hoangvinhdigital.github.io/room/13.png",
+        };
+
+        /**
+         * ==========================================
+         * 2. AUDIO ENGINE
+         * ==========================================
+         */
+        class VoidAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+                this.osc1 = null;
+                this.osc2 = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.connect(this.ctx.destination);
+                    this.masterGain.gain.value = 0.4;
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playTypeSound(mood) {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+
+                if (mood === 'HORROR') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(100 + Math.random() * 50, t);
+                    osc.frequency.exponentialRampToValueAtTime(20, t + 0.15);
+                    gain.gain.setValueAtTime(0.15, t);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                } else {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(200, t);
+                    gain.gain.setValueAtTime(0.08, t);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                }
+                osc.start(t);
+                osc.stop(t + 0.15);
+            }
+
+            playAmbience() {
+                if (!this.ctx) return;
+                
+                // Stop old sounds
+                if (this.osc1) { try { this.osc1.stop(); } catch(e){} }
+                if (this.osc2) { try { this.osc2.stop(); } catch(e){} }
+
+                const t = this.ctx.currentTime;
+                
+                // Layer 1: Low Drone
+                const osc1 = this.ctx.createOscillator();
+                const gain1 = this.ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(45, t);
+                gain1.gain.value = 0.15;
+                
+                // Layer 2: Dissonance
+                const osc2 = this.ctx.createOscillator();
+                const gain2 = this.ctx.createGain();
+                osc2.type = 'triangle';
+                osc2.frequency.setValueAtTime(48, t); 
+                gain2.gain.value = 0.05;
+
+                osc1.connect(gain1);
+                osc2.connect(gain2);
+                gain1.connect(this.masterGain);
+                gain2.connect(this.masterGain);
+                
+                osc1.start(t);
+                osc2.start(t);
+                
+                this.osc1 = osc1;
+                this.osc2 = osc2;
+            }
+        }
+
+        const audio = new VoidAudioEngine();
+
+        /**
+         * ==========================================
+         * 3. DATA & LOGIC
+         * ==========================================
+         */
+        const STORY = {
+            prologue: {
+                text: "“Không phải mọi ký ức đều muốn được nhớ lại.\n\nVà không phải mọi sự thật… đều nên được biết.”",
+                options: [{ label: "Tỉnh dậy", next: 'wake_up' }]
+            },
+            wake_up: {
+                text: "Bạn mở mắt.\nTrần nhà nứt toác. Bóng đèn vàng rẹt rẹt.\nMùi ẩm mốc xộc vào mũi.\n\nTrên bàn gỗ cạnh giường có ba thứ:",
+                options: [
+                    { label: "Cầm cuốn sổ tay", next: 'notebook' },
+                    { label: "Quan sát căn phòng", next: 'observe' },
+                    { label: "Gõ vào tường", next: 'knock' },
+                ]
+            },
+            notebook: {
+                text: "Cuốn sổ rất cũ. Trang đầu bị xé.\nTrang thứ hai viết:\n“Nếu mày đang đọc dòng này… Mày đã quên tất cả.”\n\n“Đừng tin giọng nói trong đầu. Nhưng nhất định… PHẢI MỞ PHÒNG SỐ 13.”",
+                image: 'notebook',
+                options: [{ label: "Đặt xuống", next: 'BACK' }]
+            },
+            observe: {
+                text: "Căn phòng 10m2. Không cửa sổ.\nSàn nhà có vệt xước dài sẫm màu, như từng có vật nặng bị lôi đi.\nCửa sắt đối diện có chi chít vết cào móng tay.",
+                options: [{ label: "Ngừng quan sát", next: 'BACK' }]
+            },
+            knock: {
+                text: "Bạn gõ lên tường. …cộc… cộc…\nÂm thanh rỗng tuếch.\n\nPhía sau bức tường này không phải bê tông. Nó là một khoảng không. Hoặc có ai đó đang lắng nghe.",
+                mood: 'WHISPER',
+                options: [{ label: "Lùi lại", next: 'BACK' }]
+            },
+            hallway: {
+                text: "KEEET— Cánh cửa mở ra. Hành lang dài hun hút.\nHai bên là các cửa phòng bệnh nhân.\nCuối hành lang là Cửa số 13, tên trên cửa bị gạch nát.",
+                image: 'hallway',
+                options: [
+                    { label: "Vào Phòng 4 (Nghe tiếng rè)", next: 'room_4' },
+                    { label: "Vào Phòng 8 (Cửa hé mở)", next: 'room_8' },
+                    { label: "Đến Phòng 13", next: 'voices_start' },
+                ]
+            },
+            room_4: {
+                text: "Phòng 4 bừa bộn. Trên bàn có một máy ghi âm cũ đang quay chậm chạp.",
+                options: [
+                    { label: "Bật máy ghi âm", next: 'room_4_tape' },
+                    { label: "Rời đi", next: 'hallway' }
+                ]
+            },
+            room_4_tape: {
+                text: "(Tiếng sột soạt...)\n“Nó không phải bác sĩ! Tôi thấy nó đứng trước gương phòng 13... Nó đang tập cười giống hệt chúng ta...”",
+                image: 'recorder',
+                mood: 'WHISPER',
+                options: [
+                    { label: "Nghe tiếp đoạn cuối", next: 'room_4_tape_2' },
+                    { label: "Tắt máy", next: 'hallway' }
+                ]
+            },
+            room_4_tape_2: {
+                text: "“Số 13... nó sẽ giết hết chúng ta để thay thế!”\n(Tiếng hét thất thanh rồi tắt ngấm)",
+                mood: 'HORROR',
+                options: [{ label: "Chạy ra ngoài", next: 'hallway' }]
+            },
+            room_8: {
+                text: "Phòng 8 dán đầy tranh vẽ trẻ con.\nMột bức tranh nằm giữa sàn, vẽ bằng sáp màu đỏ.",
+                options: [
+                    { label: "Xem tranh", next: 'room_8_draw' },
+                    { label: "Rời đi", next: 'hallway' }
+                ]
+            },
+            room_8_draw: {
+                text: "Tranh vẽ một đứa bé đang khóc.\nSau lưng nó là một bóng đen cao lớn, ngực viết số '13'.\n\nDòng chữ bên dưới: “Anh Mười Ba muốn chơi trốn tìm.”",
+                image: 'drawing',
+                mood: 'HORROR',
+                options: [{ label: "Đặt tranh xuống", next: 'hallway' }]
+            },
+            voices_start: {
+                text: "Trước cửa Phòng 13.\nĐầu bạn đau như búa bổ. Ký ức ùa về.",
+                options: [{ label: "Cố chịu đựng", next: 'voices_argue' }]
+            },
+            voices_argue: {
+                text: "Hai giọng nói tranh cãi trong đầu bạn:\n“Đừng vào! Đó là cái bẫy!”\n“Vào đi. Kết thúc màn kịch này.”",
+                mood: 'WHISPER',
+                options: [
+                    { label: "Sợ hãi quay đầu bỏ chạy", next: 'end_loop' },
+                    { label: "Mở cửa Phòng 13", next: 'room_13_enter' }
+                ]
+            },
+            room_13_enter: {
+                text: "Phòng 13 trống rỗng.\nChỉ có một tấm gương lớn giữa phòng và một camera trên trần nhà.",
+                options: [{ label: "Nhìn vào gương", next: 'room_13_mirror' }]
+            },
+            room_13_mirror: {
+                text: "Phản chiếu trong gương hiện ra.\nNó có khuôn mặt của bạn, nhưng đang mỉm cười tàn nhẫn.",
+                image: 'mirror',
+                mood: 'HORROR',
+                options: [
+                    { label: "Đập vỡ gương", next: 'end_loop' },
+                    { label: "Hỏi 'Mày là ai?'", next: 'end_killer' }
+                ]
+            },
+            end_loop: {
+                text: "Bạn không chịu nổi áp lực. Bạn đóng sầm cửa và bỏ chạy.\nCơn buồn ngủ ập đến...\n\nBạn mở mắt ra. Trần nhà nứt toác.\nLại một ngày mới bắt đầu.",
+                endingTitle: "ENDING 1/4: VÒNG LẶP VÔ TẬN",
+                options: [{ label: "Tỉnh dậy", next: 'wake_up' }]
+            },
+            end_killer: {
+                text: "Bóng ma cười lớn: “Tao là mày. Phần mày muốn vứt bỏ.”\nBạn nhớ ra tất cả. Bạn là kẻ đã 'dọn dẹp' các bệnh nhân ở đây.\nBạn mỉm cười lại với nó. Camera tắt ngấm.",
+                endingTitle: "ENDING 2/4: SÁT NHÂN",
+                mood: 'HORROR',
+                options: [{ label: "Khởi động lại", next: 'prologue' }]
+            },
+            end_truth: {
+                text: "Bạn nhớ lại đoạn băng ghi âm và bức tranh.\n“Không. Tao không phải sát nhân. Tao là nạn nhân duy nhất còn sống.”\n\nBạn đấm vỡ gương, lôi ra thiết bị điều khiển sau nó.\nCánh cửa mở toang. Ánh sáng tràn vào.",
+                endingTitle: "ENDING 3/4: SỰ THẬT (GOOD ENDING)",
+                options: [{ label: "Kết thúc", next: 'prologue' }]
+            },
+            end_secret: {
+                text: "Bạn nhìn thẳng vào mắt phản chiếu.\n“Chúng ta không cần trốn nữa. Bọn họ chết hết rồi.”\n\nBạn và hình phản chiếu cùng mỉm cười.\nBạn không phải nạn nhân, cũng không phải kẻ dọn dẹp.\nBạn là CHỦ NHÂN của thí nghiệm này.",
+                endingTitle: "ENDING 4/4: CHỦ NHÂN (TRUE ENDING)",
+                mood: 'HORROR',
+                options: [{ label: "Thí nghiệm mới", next: 'prologue' }]
+            }
+        };
+
+        // State
+        let currentSceneId = 'prologue';
+        let wakeUpActions = [];
+        let flags = { heardTape: false, sawDrawing: false };
+        let isTyping = false;
+        let typingTimeout = null;
+
+        // DOM Elements
+        const textEl = document.getElementById('story-text');
+        const optionsEl = document.getElementById('options-container');
+        const imageContainerEl = document.getElementById('image-container');
+        const endingTitleEl = document.getElementById('ending-title');
+        const iconHeadphone = document.getElementById('icon-headphone');
+        const iconEye = document.getElementById('icon-eye');
+        const skipBtn = document.getElementById('btn-skip');
+        const skipContainer = document.getElementById('skip-container');
+
+        // Functions
+        function renderImage(type) {
+            if (!type) return '';
+            
+            const customSrc = IMAGE_CONFIG[type];
+            let content = '';
+
+            if (customSrc) {
+                content = `
+                    <div class="border border-neutral-800 bg-black p-2 max-w-sm mx-auto shadow-[0_0_30px_rgba(255,0,0,0.1)]">
+                        <img src="${customSrc}" alt="${type}" class="w-full h-auto object-cover grayscale contrast-125 hover:grayscale-0 transition-all duration-700">
+                        <div class="text-center text-[9px] text-neutral-600 mt-1 uppercase tracking-widest">EVIDENCE_FILE_${type.toUpperCase()}</div>
+                    </div>
+                `;
+            } else {
+                // SVG Fallbacks
+                let svgContent = '';
+                if(type === 'notebook') svgContent = `<svg viewBox="0 0 300 200" class="w-full h-full"><rect x="40" y="20" width="220" height="160" class="fill-neutral-800 stroke-neutral-600"/><rect x="55" y="25" width="200" height="150" class="fill-neutral-300"/><path d="M 220 140 Q 230 130 240 150 Z" class="fill-red-900 opacity-60"/></svg>`;
+                else if(type === 'hallway') svgContent = `<svg viewBox="0 0 300 200" class="w-full h-full"><rect width="300" height="200" fill="black"/><line x1="0" y1="0" x2="150" y2="100" class="stroke-neutral-700"/><line x1="300" y1="0" x2="150" y2="100" class="stroke-neutral-700"/><line x1="0" y1="200" x2="150" y2="100" class="stroke-neutral-700"/><line x1="300" y1="200" x2="150" y2="100" class="stroke-neutral-700"/><circle cx="150" cy="100" r="2" class="fill-yellow-600 animate-pulse"/></svg>`;
+                else if(type === 'mirror') svgContent = `<svg viewBox="0 0 300 200" class="w-full h-full"><rect x="100" y="20" width="100" height="160" class="fill-neutral-900 stroke-neutral-500"/><rect x="105" y="25" width="90" height="150" class="fill-neutral-800"/><circle cx="145" cy="80" r="1" class="fill-red-500 animate-pulse"/><circle cx="155" cy="80" r="1" class="fill-red-500 animate-pulse"/></svg>`;
+                else if(type === 'recorder') svgContent = `<svg viewBox="0 0 300 200" class="w-full h-full"><rect x="75" y="50" width="150" height="100" rx="10" class="fill-neutral-800 stroke-neutral-600"/><circle cx="115" cy="100" r="25" class="fill-black stroke-neutral-700"/><circle cx="185" cy="100" r="25" class="fill-black stroke-neutral-700"/><rect x="125" y="160" width="50" height="5" class="fill-red-900 animate-pulse"/></svg>`;
+                else if(type === 'drawing') svgContent = `<svg viewBox="0 0 300 200" class="w-full h-full bg-white"><circle cx="100" cy="100" r="15" class="stroke-black fill-none"/><line x1="100" y1="115" x2="100" y2="140" class="stroke-black"/><path d="M 140 140 L 140 80 L 160 140 Z" class="fill-black opacity-80"/></svg>`;
+
+                content = `
+                    <div class="border border-neutral-800 bg-neutral-900/50 p-4 max-w-sm mx-auto shadow-2xl relative overflow-hidden group">
+                        <div class="absolute top-0 left-0 bg-neutral-800 text-[9px] px-2 py-0.5 uppercase tracking-widest text-neutral-400 group-hover:text-red-500 transition-colors">
+                            EVIDENCE: ${type.toUpperCase()}
+                        </div>
+                        <div class="aspect-video w-full opacity-80 group-hover:opacity-100 transition-opacity">
+                            ${svgContent}
+                        </div>
+                        <div class="text-center text-[10px] text-neutral-600 mt-2 font-mono">
+                            [CHƯA CÓ ẢNH - MẶC ĐỊNH]
+                        </div>
+                    </div>
+                `;
+            }
+            return content;
+        }
+
+        function typeText(text, mood, callback) {
+            isTyping = true;
+            textEl.innerHTML = '';
+            textEl.className = `text-lg md:text-xl leading-relaxed tracking-wide min-h-[140px] whitespace-pre-wrap cursor-blink ${mood === 'HORROR' ? 'text-horror' : mood === 'WHISPER' ? 'text-whisper' : 'text-neutral-300'}`;
+            
+            skipContainer.classList.remove('hidden');
+            
+            let index = 0;
+            let speed = (mood === 'HORROR') ? 70 : 40;
+
+            function nextChar() {
+                if (!isTyping) return; // Stop if skipped
+                
+                if (index < text.length) {
+                    textEl.textContent += text.charAt(index);
+                    
+                    if (text.charAt(index) !== ' ' && text.charAt(index) !== '\n' && Math.random() > 0.4) {
+                        audio.playTypeSound(mood);
+                    }
+                    
+                    index++;
+                    typingTimeout = setTimeout(nextChar, speed);
+                } else {
+                    finishTyping();
+                }
+            }
+
+            // Skip logic
+            skipBtn.onclick = function() {
+                if (!isTyping) return;
+                clearTimeout(typingTimeout);
+                textEl.textContent = text;
+                finishTyping();
+            };
+
+            function finishTyping() {
+                isTyping = false;
+                skipContainer.classList.add('hidden');
+                textEl.classList.remove('cursor-blink');
+                if (callback) callback();
+            }
+
+            nextChar();
+        }
+
+        function renderScene() {
+            const scene = STORY[currentSceneId];
+            
+            // UI Cleanup
+            optionsEl.innerHTML = '';
+            imageContainerEl.innerHTML = '';
+            imageContainerEl.classList.add('hidden');
+            endingTitleEl.classList.add('hidden');
+
+            // Ending Title
+            if (scene.endingTitle) {
+                endingTitleEl.textContent = scene.endingTitle;
+                endingTitleEl.classList.remove('hidden');
+            }
+
+            // Type Text
+            typeText(scene.text, scene.mood, () => {
+                // Show Image if exists
+                if (scene.image) {
+                    imageContainerEl.innerHTML = renderImage(scene.image);
+                    imageContainerEl.classList.remove('hidden');
+                }
+                
+                // Show Options
+                renderOptions();
+            });
+        }
+
+        function renderOptions() {
+            const scene = STORY[currentSceneId];
+            let opts = [...scene.options];
+
+            // Logic Logic wake_up
+            if (currentSceneId === 'wake_up' && wakeUpActions.length >= 2) {
+                if (!opts.find(o => o.next === 'UNLOCK_DOOR')) {
+                    opts.push({ label: "Mở cánh cửa sắt (Đã tìm thấy chìa khóa)", next: 'UNLOCK_DOOR' });
+                }
+            }
+
+            // Logic Ending room_13_mirror
+            if (currentSceneId === 'room_13_mirror') {
+                if (flags.heardTape && flags.sawDrawing) {
+                    opts.push({ label: "Phản bác: 'Tao biết sự thật'", next: 'end_truth' });
+                    opts.push({ label: "Mỉm cười lạnh lùng (Secret)", next: 'end_secret' });
+                }
+            }
+
+            opts.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                
+                // Styling
+                let bgClass = opt.label.includes('(Secret)') 
+                    ? 'border-red-900 bg-red-950/30 hover:bg-red-900/50' 
+                    : 'border-neutral-800 bg-neutral-900/80 hover:border-neutral-500';
+
+                btn.className = `group relative w-full text-left px-6 py-4 border transition-all duration-300 ${bgClass} fade-in`;
+                btn.style.animationDelay = `${idx * 0.1}s`; // Stagger effect
+                
+                btn.innerHTML = `
+                    <span class="relative z-10 flex items-center text-neutral-400 group-hover:text-white transition-colors text-sm md:text-base tracking-widest uppercase font-semibold">
+                        <span class="mr-4 opacity-30 group-hover:opacity-100 transition-opacity w-6 flex justify-center font-mono">
+                            ${opt.next === 'BACK' ? '↩' : (idx + 1)}
+                        </span>
+                        ${opt.label}
+                    </span>
+                `;
+
+                btn.onclick = () => handleChoice(opt.next);
+                optionsEl.appendChild(btn);
+            });
+        }
+
+        function handleChoice(next) {
+            audio.init();
+            audio.playAmbience();
+
+            // Flags Update
+            if (next === 'room_4_tape_2') {
+                flags.heardTape = true;
+                iconHeadphone.classList.remove('hidden');
+            }
+            if (next === 'room_8_draw') {
+                flags.sawDrawing = true;
+                iconEye.classList.remove('hidden');
+            }
+
+            // Back Logic
+            if (next === 'BACK') {
+                if (['knock', 'observe', 'notebook'].includes(currentSceneId)) currentSceneId = 'wake_up';
+                else currentSceneId = 'hallway';
+                renderScene();
+                return;
+            }
+
+            // Wake Up Logic
+            if (currentSceneId === 'wake_up') {
+                if (['notebook', 'observe', 'knock'].includes(next)) {
+                    if (!wakeUpActions.includes(next)) wakeUpActions.push(next);
+                    currentSceneId = next;
+                } else if (next === 'UNLOCK_DOOR') {
+                    currentSceneId = 'hallway';
+                }
+            } 
+            // Restart Logic
+            else if (next === 'prologue') {
+                wakeUpActions = [];
+                flags = { heardTape: false, sawDrawing: false };
+                iconHeadphone.classList.add('hidden');
+                iconEye.classList.add('hidden');
+                currentSceneId = 'prologue';
+            } else {
+                currentSceneId = next;
+            }
+
+            renderScene();
+        }
+
+        // Initialize Audio on first click anywhere
+        document.body.addEventListener('click', () => {
+            audio.init();
+            audio.playAmbience();
+        }, { once: true });
+
+        // Start Game
+        renderScene();
+
+    </script>
+</body>
+</html>
